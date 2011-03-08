@@ -1,0 +1,320 @@
+#light
+
+
+
+namespace ViEmu
+  module Interfaces = begin
+    [<InterfaceAttribute ()>]
+    type IViMode<'ctx> =
+      interface
+        abstract member HandleEnter : 'ctx -> bool
+        abstract member
+          HandleKey : 'ctx -> System.Windows.Input.KeyEventArgs -> unit
+        abstract member HandleTab : 'ctx -> bool
+      end
+    [<InterfaceAttribute ()>]
+    type IKeyHandler<'ctx> =
+      interface
+        abstract member
+          HandleLowerCase : 'ctx -> System.Windows.Input.KeyEventArgs -> bool
+        abstract member
+          HandleSpecialChar : 'ctx -> System.Windows.Input.KeyEventArgs -> bool
+        abstract member
+          HandleUpperCase : 'ctx -> System.Windows.Input.KeyEventArgs -> bool
+      end
+    [<InterfaceAttribute ()>]
+    type IViTextOperations =
+      interface
+        abstract member AsSingleEvent : (unit -> unit) -> unit
+        abstract member CopyLine : unit -> string
+        abstract member CopySelection : unit -> string
+        abstract member CopyToLineEnd : unit -> string
+        abstract member CutSelection : unit -> string
+        abstract member DeleteCharacter : unit -> unit
+        abstract member DeleteLine : unit -> string
+        abstract member DeleteSelection : unit -> string
+        abstract member GoToDocumentEnd : ?extendSelection:bool -> unit
+        abstract member GoToDocumentStart : ?extendSelection:bool -> unit
+        abstract member GoToLine : int * ?extendSelection:bool -> unit
+        abstract member GoToLineEnd : ?extendSelection:bool -> unit
+        abstract member
+          GoToLineStart : ?includeWhitespace:bool * ?extendSelection:bool ->
+                            unit
+        abstract member GoToNextChar : ?extendSelection:bool -> unit
+        abstract member GoToNextLine : ?extendSelection:bool -> unit
+        abstract member
+          GoToNextWord : ?includePunctuation:bool * ?extendSelection:bool ->
+                           unit
+        abstract member GoToParagraphEnd : ?extendSelection:bool -> unit
+        abstract member GoToParagraphStart : ?extendSelection:bool -> unit
+        abstract member GoToPrevChar : ?extendSelection:bool -> unit
+        abstract member GoToPrevLine : ?extendSelection:bool -> unit
+        abstract member
+          GoToPrevWord : ?includePunctuation:bool * ?extendSelection:bool ->
+                           unit
+        abstract member
+          GoToWordEnd : ?includePunctuation:bool * ?extendSelection:bool -> unit
+        abstract member
+          GoToWordStart : ?includePunctuation:bool * ?extendSelection:bool ->
+                            unit
+        abstract member Indent : unit -> unit
+        abstract member InsertNewLine : unit -> unit
+        abstract member JoinPreviousLine : unit -> unit
+        abstract member OpenLineAbove : unit -> unit
+        abstract member OpenLineBelow : unit -> unit
+        abstract member PasteAbove : ?content:string -> unit
+        abstract member PasteBelow : ?content:string -> unit
+        abstract member PasteInsert : ?content:string -> unit
+        abstract member PasteOverSelection : ?content:string -> unit
+        abstract member ResetSelection : unit -> unit
+        abstract member SelectEnclosingWord : unit -> unit
+        abstract member SwapCaretAndAnchor : unit -> unit
+        abstract member Unindent : unit -> unit
+        abstract member
+          CaretMoved : IEvent<Microsoft.VisualStudio.Text.Editor.ITextCaret>
+      end
+    [<InterfaceAttribute ()>]
+    type IViContext =
+      interface
+        abstract member Redo : unit -> unit
+        abstract member SetBaseMode : unit -> unit
+        abstract member SetDeleteMode : unit -> unit
+        abstract member SetFindMode : unit -> unit
+        abstract member SetInsertMode : unit -> unit
+        abstract member SetOverwriteMode : ?singleChar:bool -> unit
+        abstract member SetVisualMode : unit -> unit
+        abstract member SetYankMode : unit -> unit
+        abstract member Undo : unit -> unit
+        abstract member Mode : IViMode<IViContext> option
+        abstract member Operations : IViTextOperations
+        abstract member
+          TextView : Microsoft.VisualStudio.Text.Editor.IWpfTextView
+      end
+    type OverwriteOff =
+      class
+        interface System.IDisposable
+        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView ->
+                OverwriteOff
+      end
+  end
+
+namespace ViEmu.Monitors
+  type IntellisenseMonitor =
+    class
+      new : textView:Microsoft.VisualStudio.Text.Editor.ITextView *
+            completionBroker:Microsoft.VisualStudio.Language.Intellisense.ICompletionBroker *
+            quickInfo:Microsoft.VisualStudio.Language.Intellisense.IQuickInfoBroker *
+            smartTag:Microsoft.VisualStudio.Language.Intellisense.ISmartTagBroker ->
+              IntellisenseMonitor
+      member DeactivateIntellisense : unit -> unit
+      member IsIntellisenseActive : unit -> bool
+    end
+
+namespace ViEmu.Modes
+  type BaseMode =
+    class
+      interface Interfaces.IViMode<Interfaces.IViContext>
+      new : unit -> BaseMode
+      abstract member
+        HandleLowerCase : Interfaces.IViContext *
+                          System.Windows.Input.KeyEventArgs -> unit
+      abstract member
+        HandleUpperCase : Interfaces.IViContext *
+                          System.Windows.Input.KeyEventArgs -> unit
+      override
+        HandleLowerCase : context:Interfaces.IViContext *
+                          args:System.Windows.Input.KeyEventArgs -> unit
+      override
+        HandleUpperCase : context:Interfaces.IViContext *
+                          args:System.Windows.Input.KeyEventArgs -> unit
+    end
+
+namespace ViEmu
+  [<System.ComponentModel.Composition.Export
+    (typeof<Microsoft.VisualStudio.Text.Editor.KeyProcessor>);
+    Microsoft.VisualStudio.Utilities.ContentType ("text")>]
+  type ViKeyProcessor =
+    class
+      inherit Microsoft.VisualStudio.Text.Editor.KeyProcessor
+      new : context:Interfaces.IViContext *
+            intellisenseMonitor:Monitors.IntellisenseMonitor -> ViKeyProcessor
+      member EscapeCommandSent : unit -> unit
+      override PreviewKeyDown : args:System.Windows.Input.KeyEventArgs -> unit
+      override PreviewKeyUp : args:System.Windows.Input.KeyEventArgs -> unit
+      override IsInterestedInHandledEvents : bool
+    end
+  and EscapeCommandFilter =
+    class
+      interface Microsoft.VisualStudio.OLE.Interop.IOleCommandTarget
+      new : processor:ViKeyProcessor *
+            viewAdapter:Microsoft.VisualStudio.TextManager.Interop.IVsTextView ->
+              EscapeCommandFilter
+      member Disconnect : unit -> int
+      member
+        NextTarget : Microsoft.VisualStudio.OLE.Interop.IOleCommandTarget option
+      member
+        NextTarget : Microsoft.VisualStudio.OLE.Interop.IOleCommandTarget option
+                       with set
+    end
+
+namespace ViEmu
+  module TextOperations = begin
+    type internal OverwriteOff =
+      class
+        interface System.IDisposable
+        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView ->
+                OverwriteOff
+      end
+    type internal CharMovementContext =
+      class
+        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView *
+              ops:Microsoft.VisualStudio.Text.Operations.IEditorOperations *
+              includePunc:bool -> CharMovementContext
+        member InWhitespace : unit -> bool
+        member MoveToNextChar : unit -> bool
+        member MoveToPrevChar : unit -> bool
+        member SetCaretPosition : extendSelection:bool -> unit
+      end
+    val flip : ('a -> 'b -> 'c) -> 'b -> 'a -> 'c
+    type Operations =
+      class
+        interface Interfaces.IViTextOperations
+        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView *
+              ops:Microsoft.VisualStudio.Text.Operations.IEditorOperations ->
+                Operations
+        member
+          CaretMoved : IEvent<Microsoft.VisualStudio.Text.Editor.ITextCaret>
+      end
+  end
+
+namespace ViEmu.Modes
+  type VisualMode =
+    class
+      inherit BaseMode
+      new : unit -> VisualMode
+      override
+        HandleLowerCase : context:Interfaces.IViContext *
+                          args:System.Windows.Input.KeyEventArgs -> unit
+      override
+        HandleUpperCase : context:Interfaces.IViContext *
+                          args:System.Windows.Input.KeyEventArgs -> unit
+    end
+
+namespace ViEmu.Modes
+  type OverwriteMode =
+    class
+      inherit BaseMode
+      new : singleCharOverwrite:bool -> OverwriteMode
+      override
+        HandleLowerCase : context:Interfaces.IViContext *
+                          args:System.Windows.Input.KeyEventArgs -> unit
+      override
+        HandleUpperCase : context:Interfaces.IViContext *
+                          args:System.Windows.Input.KeyEventArgs -> unit
+    end
+
+namespace ViEmu.Modes
+  module internal Patterns = begin
+    val ( |CopyEndPattern|_| ) : System.Windows.Input.Key -> unit option
+    val ( |DeleteEndPattern|_| ) : System.Windows.Input.Key -> unit option
+    val copyExecute :
+      (Interfaces.IViTextOperations -> Interfaces.IViTextOperations) ->
+        Interfaces.IViTextOperations -> unit
+    val deleteExecute :
+      (Interfaces.IViTextOperations -> Interfaces.IViTextOperations) ->
+        Interfaces.IViTextOperations -> unit
+  end
+  module SelectionMode = begin
+    type StagedSelectionMode =
+      class
+        inherit BaseMode
+        new : endValuePattern:(System.Windows.Input.Key -> unit option) *
+              modeFunction:((Interfaces.IViTextOperations ->
+                               Interfaces.IViTextOperations) ->
+                              Interfaces.IViTextOperations -> unit) ->
+                StagedSelectionMode
+        override
+          HandleLowerCase : context:Interfaces.IViContext *
+                            args:System.Windows.Input.KeyEventArgs -> unit
+        override
+          HandleUpperCase : context:Interfaces.IViContext *
+                            args:System.Windows.Input.KeyEventArgs -> unit
+      end
+  end
+  type CopyMode =
+    class
+      inherit SelectionMode.StagedSelectionMode
+      new : unit -> CopyMode
+    end
+  type DeleteMode =
+    class
+      inherit SelectionMode.StagedSelectionMode
+      new : unit -> DeleteMode
+    end
+
+namespace ViEmu.Modes
+  type FindMode =
+    class
+      inherit BaseMode
+      new : unit -> FindMode
+    end
+
+namespace ViEmu
+  module CursorAdornment = begin
+    type CursorAdornment =
+      class
+        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView ->
+                CursorAdornment
+        member DrawCursor : unit -> unit
+      end
+  end
+
+namespace ViEmu
+  type Context =
+    class
+      interface Interfaces.IViContext
+      new : _mode:Interfaces.IViMode<Interfaces.IViContext> option *
+            textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView *
+            ops:Microsoft.VisualStudio.Text.Operations.IEditorOperations *
+            undoHistRegistry:Microsoft.VisualStudio.Text.Operations.ITextUndoHistoryRegistry ->
+              Context
+    end
+
+namespace ViEmu
+  [<System.ComponentModel.Composition.Export
+    (typeof<Microsoft.VisualStudio.Text.Editor.IKeyProcessorProvider>);
+    Microsoft.VisualStudio.Utilities.Name ("ViKeyProcessorProvider");
+    Microsoft.VisualStudio.Utilities.ContentType ("text");
+    Microsoft.VisualStudio.Text.Editor.TextViewRole ("INTERACTIVE")>]
+  type ViKeyProcessorProvider =
+    class
+      interface Microsoft.VisualStudio.Text.Editor.IKeyProcessorProvider
+      new : unit -> ViKeyProcessorProvider
+    end
+
+namespace ViEmu
+  [<System.ComponentModel.Composition.Export
+    (typeof<Microsoft.VisualStudio.Editor.IVsTextViewCreationListener>);
+    Microsoft.VisualStudio.Utilities.ContentType ("text");
+    Microsoft.VisualStudio.Text.Editor.TextViewRole ("EDITABLE")>]
+  type TextViewCreationListener =
+    class
+      interface Microsoft.VisualStudio.Editor.IVsTextViewCreationListener
+      new : unit -> TextViewCreationListener
+      [<System.ComponentModel.Composition.Export
+        (typeof<Microsoft.VisualStudio.Text.Editor.AdornmentLayerDefinition>);
+        Microsoft.VisualStudio.Utilities.Name ("CursorBlockLayer");
+        Microsoft.VisualStudio.Utilities.Order ();
+        Microsoft.VisualStudio.Text.Editor.TextViewRole ("EDITABLE")>]
+      member
+        CursorBlockLayer : Microsoft.VisualStudio.Text.Editor.AdornmentLayerDefinition
+      [<System.ComponentModel.Composition.Export
+        (typeof<Microsoft.VisualStudio.Text.Editor.AdornmentLayerDefinition>);
+        Microsoft.VisualStudio.Utilities.Name ("CursorBlockLayer");
+        Microsoft.VisualStudio.Utilities.Order ();
+        Microsoft.VisualStudio.Text.Editor.TextViewRole ("EDITABLE")>]
+      member
+        CursorBlockLayer : Microsoft.VisualStudio.Text.Editor.AdornmentLayerDefinition
+                             with set
+    end
+
