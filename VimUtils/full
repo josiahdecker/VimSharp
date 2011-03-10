@@ -159,12 +159,6 @@ namespace ViEmu
 
 namespace ViEmu
   module TextOperations = begin
-    type internal OverwriteOff =
-      class
-        interface System.IDisposable
-        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView ->
-                OverwriteOff
-      end
     type internal CharMovementContext =
       class
         new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView *
@@ -183,7 +177,14 @@ namespace ViEmu
               ops:Microsoft.VisualStudio.Text.Operations.IEditorOperations ->
                 Operations
         member
+          add_CaretMoved : Handler<Microsoft.VisualStudio.Text.Editor.ITextCaret> ->
+                             unit
+        [<CLIEventAttribute ()>]
+        member
           CaretMoved : IEvent<Microsoft.VisualStudio.Text.Editor.ITextCaret>
+        member
+          remove_CaretMoved : Handler<Microsoft.VisualStudio.Text.Editor.ITextCaret> ->
+                                unit
       end
   end
 

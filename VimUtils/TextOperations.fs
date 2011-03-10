@@ -9,15 +9,7 @@ module ViEmu.TextOperations
 
     open Interfaces
 
-    type internal OverwriteOff(textView: #IWpfTextView) =
-        let view = textView :> IWpfTextView
-        do
-            view.Options.SetOptionValue("TextView/OverwriteMode", false)
-
-        interface IDisposable with
-            member this.Dispose () = view.Options.SetOptionValue("TextView/OverwriteMode", true)
-
-
+    // Used for finding the begining or ending of words, moves a 'point' instead of the caret until the op is complete
     type internal CharMovementContext(textView: #IWpfTextView, ops: #IEditorOperations, includePunc: bool) =
         let (|Whitespace|Symbol|Alpha|) khar =
             if Char.IsWhiteSpace khar then Whitespace else
@@ -57,9 +49,14 @@ module ViEmu.TextOperations
 
         member this.InWhitespace () = Char.IsWhiteSpace (point.GetChar())
 
+    // reverse the order of the first two parameters
     let flip (fxn: 'a -> 'b -> 'c) (x: 'b) (y: 'a) = fxn y x
 
-    type Operations(textView: #IWpfTextView, ops: #IEditorOperations) =
+    ///<summary>Mainly a wrapper around the built in Visual Studio text operations, provides a single point of interaction
+    ///with the text buffer.  In cases where the Vi op differs from the Visual Studio op this class will make adjustments</summary>
+    ///<remarks>Ops that cause the caret to move end with the 'wrapup' function, which allows execution of code at then end of any movement.
+    ///<remarks>
+    type Operations(textView: IWpfTextView, ops: IEditorOperations) =
         let passResultOver (x: 'a) (fxn: unit -> unit) = 
             fxn()
             x
@@ -94,9 +91,7 @@ module ViEmu.TextOperations
             let whiteSpace = ops.GetWhitespaceForVirtualSpace(snapShotPt)
             use off = new OverwriteOff(textView)
             ops.InsertText whiteSpace
-            
-                    
-
+               
         let moveHorzIfNeeded () =
             let caret = textView.Caret
             let scroller = textView.ViewScroller
@@ -113,7 +108,9 @@ module ViEmu.TextOperations
                 scroller.ScrollViewportVerticallyByPixels(textView.ViewportTop - caret.Top)     
             elif caret.Bottom > textView.ViewportBottom then
                 scroller.ScrollViewportVerticallyByPixels(textView.ViewportBottom - caret.Bottom)
+        
 
+        // this event is probably not needed, as the Caret and TextView events seems to fire with every caret position change
         let caretMoved = Event<_>()
         let triggerCaretMoved () = caretMoved.Trigger textView.Caret
 
@@ -123,24 +120,28 @@ module ViEmu.TextOperations
 
         let wrapUp = ensureCaretIsVisible >> triggerCaretMoved
 
-        let paragraphDivision check move finalMove =
-            while textView.Caret.ContainingTextViewLine.Length <> 0 && not <| check() do
+        // IOC function. finds an empty line, indicating a paragraph break, 'tooFar' is intended to prevent scrolling past the buffer start or end
+        // 'move' moves up or down a line, 'finalMove' repositions the caret after the break is found.
+        let paragraphDivision tooFar move finalMove =
+            while textView.Caret.ContainingTextViewLine.Length <> 0 && not <| tooFar() do
                 move()
             finalMove()
             
         let paragraphEnd (extend: bool) =
-            let check () = 
-                let lineNum = textView.VisualSnapshot.GetLineNumberFromPosition(textView.Caret.Position.BufferPosition.Position)    
-                lineNum >= (textView.VisualSnapshot.LineCount - 1)
-            let move () = ops.MoveLineDown(extend)
+            let lineNum = ref <| textView.VisualSnapshot.GetLineNumberFromPosition(textView.Caret.Position.BufferPosition.Position)
+            let check () = !lineNum >= (textView.VisualSnapshot.LineCount - 1)
+            let move () = 
+                lineNum := !lineNum + 1
+                ops.MoveLineDown(extend)
             let finalMove () = ops.MoveToEndOfLine(extend)
             paragraphDivision check move finalMove
 
         let paragraphStart (extend: bool) =
-            let check () =
-                let lineNum = textView.VisualSnapshot.GetLineNumberFromPosition(textView.Caret.Position.BufferPosition.Position)    
-                lineNum <= 0
-            let move () = ops.MoveLineUp(extend)
+            let lineNum = ref <| textView.VisualSnapshot.GetLineNumberFromPosition(textView.Caret.Position.BufferPosition.Position)
+            let check () = (!lineNum) <= 0
+            let move () = 
+                lineNum := !lineNum - 1
+                ops.MoveLineUp(extend)
             let finalMove () = ops.MoveToStartOfLineAfterWhiteSpace(extend)
             paragraphDivision check move finalMove
 
@@ -150,6 +151,9 @@ module ViEmu.TextOperations
                 else
                     System.Char.IsLetterOrDigit
 
+        // IOC function, finds breaks between words. A break is a 'state change', example- from a char to whitespace.
+        // when includePunctuation is true going from a char to a punctuator or vice versa is interpreted as a state change, and
+        // therefore also as a word break
         let goToWordPart includePunctuation extendSelection forward backward =
                 let movementContext = new CharMovementContext(textView, ops, !!includePunctuation)
                 if not <| movementContext.InWhitespace() then
@@ -165,6 +169,7 @@ module ViEmu.TextOperations
         let prevChar (movementContext: CharMovementContext) = movementContext.MoveToPrevChar()
         let nextChar (movementContext: CharMovementContext) = movementContext.MoveToNextChar()
 
+        [<CLIEvent>]
         member this.CaretMoved = caretMoved.Publish
 
         interface IViTextOperations with
@@ -197,7 +202,8 @@ module ViEmu.TextOperations
 
             member this.GoToNextLine (?includeWhitespace) = ops.MoveLineDown(!!includeWhitespace) |> moveVertIfNeeded |> triggerCaretMoved
 
-            //whether state changes depends on the value of includePunctuation, when we do include punctuation
+            //At the begining or ending of a word the we have a 'state change'. Whether state changes in a given caret movement depends 
+            //on the value of 'includePunctuation', when we do include punctuation
             //we change when going from alpha to symbol (or vice versa) and from whitespace to
             //non-whitespace.  When not including puctuation we only state change when going from whitespace
             //to non-whitespace
@@ -209,7 +215,7 @@ module ViEmu.TextOperations
                     changedState := movementContext.MoveToPrevChar()
                 movementContext.MoveToNextChar() |> ignore
                 movementContext.SetCaretPosition(!!extendSelection)
-                (* if we started in whitespace then we will still be in whitespace now, recursing one time will
+                (* if we started in whitespace then we will still be in whitespace now (the begining of a "whitespace word"), recursing one time will
                 *  get us back into text *)
                 if movementContext.InWhitespace() then
                     (this :> IViTextOperations).GoToPrevWord(!!includePunctuation, !!extendSelection)
@@ -225,7 +231,7 @@ module ViEmu.TextOperations
                     (this :> IViTextOperations).GoToNextWord(!!includePunctuation, !!extendSelection)
                 wrapUp()
 
-            //does nothing if not currently inside a word and not already at the word start
+            //does nothing if not currently inside a word or if already at the word start
             member this.GoToWordStart (?includePunctuation, ?extendSelection) =
                 goToWordPart includePunctuation extendSelection prevChar nextChar 
 
@@ -245,21 +251,12 @@ module ViEmu.TextOperations
             member this.OpenLineAbove () =
                 use off = new OverwriteOff(textView)
                 ops.MoveToStartOfLineAfterWhiteSpace(false)
-                let left = textView.Caret.Left
-                ops.MoveToStartOfLine(false)
-                ops.InsertNewLine() |> ignore
-                ops.MoveToPreviousCharacter(false)
-                setIndentation(left) |> ignore
+                withRelativePositionMaintained (fun () -> ops.InsertNewLine() |> ignore)
                 |> wrapUp
 
             member this.OpenLineBelow () =
-                use off = new OverwriteOff(textView)
-                ops.MoveToHome(false)
-                let left = textView.Caret.Left
-                ops.MoveToStartOfNextLineAfterWhiteSpace(false)
-                withRelativePositionMaintained (fun () -> ops.InsertNewLine() |> ignore)
-                //ops.MoveToPreviousCharacter(false)
-                //setIndentation(left) |> ignore
+                (this :> IViTextOperations).OpenLineAbove()
+                ops.TransposeLine() |> ignore
                 |> wrapUp
 
             member this.CutSelection () =
@@ -305,6 +302,7 @@ module ViEmu.TextOperations
                 pasteAndAdjust content
                 |> wrapUp
 
+            //if the text has a newline in it, it will be inserted on a new line, otherwise it will be inserted inline
             member this.PasteBelow ?content =
                 use off = new OverwriteOff(textView)
                 let text = defaultArg content (System.Windows.Clipboard.GetText())
@@ -362,6 +360,8 @@ module ViEmu.TextOperations
 
             member this.SwapCaretAndAnchor () = ops.SwapCaretAndAnchor() |> wrapUp
 
+            //functions called on the ops object do not seem to execute synchronously.  Having the buffer text change
+            //primitive calls causes null reference errors.
             member this.AsSingleEvent fxn =
                 //ops.AddBeforeTextBufferChangePrimitive()
                 fxn()

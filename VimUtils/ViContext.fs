@@ -8,7 +8,7 @@
     open ViEmu.Modes
     open ViEmu.CursorAdornment
     
-    type Context(_mode: IViMode<IViContext> option, textView: IWpfTextView, ops: #IEditorOperations, undoHistRegistry: ITextUndoHistoryRegistry) =
+    type Context(_mode: IViMode<IViContext> option, textView: IWpfTextView, ops: IEditorOperations, undoHistRegistry: ITextUndoHistoryRegistry) =
         
         let mutable mode = _mode
         let textOps = new TextOperations.Operations(textView, ops) :> IViTextOperations
@@ -24,7 +24,7 @@
 
         interface IViContext with
             member this.Mode with get() = mode 
-            member this.TextView with get() = textView 
+            member this.TextView with get() = textView
             member this.Operations with get() = textOps
             
             member this.Undo () = undoHistRegistry.RegisterHistory(textView.TextBuffer).Undo(1)
