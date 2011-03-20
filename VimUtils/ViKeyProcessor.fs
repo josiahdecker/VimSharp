@@ -30,17 +30,16 @@
                 | None -> base.PreviewKeyDown args
 
         ///escape key needs to be handled with an OleCommand in order to detect whether intellisense is
-        ///active at the time. 
+        ///active at the time. Tab key also handled in OleCommand so as to block further propogation. 
         override this.PreviewKeyUp args =
             match (args.Key, context.Mode) with
                 | Key.Tab, Some(mode) ->
-                    //Return true with HandleTab to stop default processing 
-                    if not <| mode.HandleTab context then
-                        base.PreviewKeyUp args
+                    //command already handled by filter
+                    ()
                 |Key.Enter, Some(mode) ->
                     if not <| mode.HandleEnter context then
                         base.PreviewKeyUp args
-                | _, _ -> base.PreviewKeyUp args
+                | _, _ ->     base.PreviewKeyUp args
 
         member this.EscapeCommandSent () = 
             if not <| intellisenseMonitor.IsIntellisenseActive() then
@@ -49,8 +48,33 @@
             else
                 intellisenseMonitor.DeactivateIntellisense()
 
-    and EscapeCommandFilter(processor: ViKeyProcessor, viewAdapter: IVsTextView) =
+        member this.TabCommandSent () =
+            match context.Mode with
+             | Some(mode) -> mode.HandleTab context
+             | None -> false
+
+    and CommandFilter(processor: ViKeyProcessor, viewAdapter: IVsTextView) =
         let mutable nextTarget: IOleCommandTarget option = None
+
+        //[<Literal>]
+        //let VSConstants = VSConstants.VSStd2K
+        [<Literal>]
+        let CANCEL = (VSConstants.VSStd2KCmdID.CANCEL :> int )
+        [<Literal>]
+        let cancel = uint32 VSConstants.VSStd2KCmdID.Cancel
+        [<Literal>]
+        let TAB = uint32 VSConstants.VSStd2KCmdID.TAB
+        [<Literal>]
+        let BACKTAB = uint32 VSConstants.VSStd2KCmdID.BACKTAB
+
+        let (|Escape|Tab|BackTab|Other|) commandID =
+            let commandID = uint32 commandID
+            match commandID with
+             | VSConstants.VSStd2KCmdID.CANCEL
+             | VSConstants.VSStd2KCmdID.Cancel -> Escape
+             | x when x = uint32 VSConstants.VSStd2KCmdID.TAB -> Tab
+             | x when x = uint32 VSConstants.VSStd2KCmdID.BACKTAB -> BackTab
+             | _ -> Other
 
         member this.NextTarget with 
                                     get() = nextTarget
@@ -59,15 +83,25 @@
         member this.Disconnect () =
             viewAdapter.RemoveCommandFilter(this)
 
+        
+
         interface IOleCommandTarget with
             member this.Exec(commandGroup, commandID, opt, pvaIn, pvaOut) =
-                if commandGroup = VSConstants.VSStd2K then
-                    if  commandID = (uint32 VSConstants.VSStd2KCmdID.CANCEL) || 
-                        commandID = (uint32 VSConstants.VSStd2KCmdID.Cancel) then
+                let blockPropogation: bool =
+                    match commandGroup with
+                     | VSConstants.VSStd2K ->
+                        match commandID with
+                         | Escape -> 
                             processor.EscapeCommandSent()
-                match nextTarget with
-                |Some(target) -> target.Exec(&commandGroup, commandID, opt, pvaIn, pvaOut)
-                |None -> VSConstants.S_OK;
+                            false
+                         | Tab -> processor.TabCommandSent()
+                         | BackTab -> processor.BackTabCommandSent()
+                         | Other -> false
+                     | _ -> false
+                match blockPropogation, nextTarget with
+                |true, _ -> VSConstants.S_OK
+                |false, Some(target) -> target.Exec(&commandGroup, commandID, opt, pvaIn, pvaOut)
+                |_, None -> VSConstants.S_OK
 
             member this.QueryStatus (group, cmds, prgCmds, cmdText) =
                 match nextTarget with

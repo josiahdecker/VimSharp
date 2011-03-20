@@ -59,6 +59,7 @@ namespace ViEmu
                             unit
         abstract member Indent : unit -> unit
         abstract member InsertNewLine : unit -> unit
+        abstract member JoinNextLine : unit -> unit
         abstract member JoinPreviousLine : unit -> unit
         abstract member OpenLineAbove : unit -> unit
         abstract member OpenLineBelow : unit -> unit
@@ -115,6 +116,7 @@ namespace ViEmu.Modes
     class
       interface Interfaces.IViMode<Interfaces.IViContext>
       new : unit -> BaseMode
+      new : extendSelection:bool -> BaseMode
       abstract member
         HandleLowerCase : Interfaces.IViContext *
                           System.Windows.Input.KeyEventArgs -> unit
@@ -141,14 +143,15 @@ namespace ViEmu
       member EscapeCommandSent : unit -> unit
       override PreviewKeyDown : args:System.Windows.Input.KeyEventArgs -> unit
       override PreviewKeyUp : args:System.Windows.Input.KeyEventArgs -> unit
+      member TabCommandSent : unit -> bool
       override IsInterestedInHandledEvents : bool
     end
-  and EscapeCommandFilter =
+  and CommandFilter =
     class
       interface Microsoft.VisualStudio.OLE.Interop.IOleCommandTarget
       new : processor:ViKeyProcessor *
             viewAdapter:Microsoft.VisualStudio.TextManager.Interop.IVsTextView ->
-              EscapeCommandFilter
+              CommandFilter
       member Disconnect : unit -> int
       member
         NextTarget : Microsoft.VisualStudio.OLE.Interop.IOleCommandTarget option
@@ -193,12 +196,6 @@ namespace ViEmu.Modes
     class
       inherit BaseMode
       new : unit -> VisualMode
-      override
-        HandleLowerCase : context:Interfaces.IViContext *
-                          args:System.Windows.Input.KeyEventArgs -> unit
-      override
-        HandleUpperCase : context:Interfaces.IViContext *
-                          args:System.Windows.Input.KeyEventArgs -> unit
     end
 
 namespace ViEmu.Modes

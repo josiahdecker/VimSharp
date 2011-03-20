@@ -7,12 +7,14 @@
     open Microsoft.VisualStudio.Editor
     open ViEmu.Interfaces
 
-    type BaseMode() =
+    type BaseMode(extendSelection: bool) =
         let (|UpperCase|LowerCase|) key =
             if Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift) then
                 UpperCase
             else
                 LowerCase
+
+        new () = BaseMode(false)
         
         interface IViMode<IViContext> with
             member this.HandleKey context args =
@@ -22,9 +24,12 @@
                     |UpperCase -> this.HandleUpperCase(context, args)
                     |LowerCase -> this.HandleLowerCase(context, args)
 
+            // return true to indicate that the key has been handled, stops further propogation of the event 
             member this.HandleTab context = 
-                //TODO- context.Operations.Indent()
-                false
+                match true with
+                 | UpperCase -> context.Operations.Unindent()
+                 | LowerCase -> context.Operations.Indent()
+                true
             
             member this.HandleEnter context = 
                 false
@@ -36,13 +41,13 @@
                     |Key.A -> 
                         context.Operations.GoToNextChar()
                         context.SetInsertMode()
-                    |Key.H -> context.Operations.GoToPrevChar()
-                    |Key.L -> context.Operations.GoToNextChar()
-                    |Key.J -> context.Operations.GoToNextLine()
-                    |Key.K -> context.Operations.GoToPrevLine()
-                    |Key.B -> context.Operations.GoToPrevWord(includePunctuation=true)
-                    |Key.W -> context.Operations.GoToNextWord(includePunctuation=true)
-                    |Key.D0 -> context.Operations.GoToLineStart()
+                    |Key.H | Key.Left -> context.Operations.GoToPrevChar(extendSelection)
+                    |Key.L | Key.Right -> context.Operations.GoToNextChar(extendSelection)
+                    |Key.J | Key.Down -> context.Operations.GoToNextLine(extendSelection)
+                    |Key.K | Key.Up -> context.Operations.GoToPrevLine(extendSelection)
+                    |Key.B -> context.Operations.GoToPrevWord(includePunctuation=true, extendSelection=extendSelection)
+                    |Key.W -> context.Operations.GoToNextWord(includePunctuation=true, extendSelection=extendSelection)
+                    |Key.D0 -> context.Operations.GoToLineStart(extendSelection)
                     |Key.X -> context.Operations.DeleteCharacter()
                     |Key.R -> context.SetOverwriteMode(singleChar=true)
                     |Key.D -> context.SetDeleteMode()
@@ -53,6 +58,7 @@
                         context.SetInsertMode()
                     |Key.V -> context.SetVisualMode()
                     |Key.U -> context.Undo()
+                    |Key.Tab -> context.Operations.Indent()
                     |_ -> args.Handled <- false
             
         abstract member HandleUpperCase: IViContext * KeyEventArgs -> unit
@@ -62,10 +68,10 @@
                     context.Operations.GoToLineEnd(extendSelection=true)
                     context.Operations.DeleteSelection() |> ignore
                 |Key.Y -> context.Operations.CopyToLineEnd() |> ignore
-                |Key.B -> context.Operations.GoToPrevWord(includePunctuation=false)
-                |Key.W -> context.Operations.GoToNextWord(includePunctuation=false)
-                |(* Key.$ *) Key.D4-> context.Operations.GoToLineEnd()
-                |Key.J -> context.Operations.JoinPreviousLine()
+                |Key.B -> context.Operations.GoToPrevWord(includePunctuation=false, extendSelection=extendSelection)
+                |Key.W -> context.Operations.GoToNextWord(includePunctuation=false, extendSelection=extendSelection)
+                |(* Key.$ *) Key.D4-> context.Operations.GoToLineEnd(extendSelection)
+                |Key.J -> context.Operations.JoinNextLine()
                 |Key.R -> context.SetOverwriteMode(singleChar=false)
                 |Key.O -> 
                     context.Operations.OpenLineAbove()
@@ -75,5 +81,8 @@
                     context.Operations.GoToLineEnd()
                     context.SetInsertMode()
                 |Key.U -> context.Redo()
+                |(* Key.{ *) Key.OemOpenBrackets -> context.Operations.GoToParagraphStart(extendSelection)
+                |(* Key.} *) Key.OemCloseBrackets -> context.Operations.GoToParagraphEnd(extendSelection)
+                |Key.Tab -> context.Operations.Indent()
                 |_ -> args.Handled <- false
 

@@ -1,6 +1,7 @@
 ﻿
 module ViEmu.TextOperations
     open System
+    open System.Text
     open System.Windows.Input
     open Microsoft.VisualStudio.Text
     open Microsoft.VisualStudio.Text.Editor
@@ -169,6 +170,26 @@ module ViEmu.TextOperations
         let prevChar (movementContext: CharMovementContext) = movementContext.MoveToPrevChar()
         let nextChar (movementContext: CharMovementContext) = movementContext.MoveToNextChar()
 
+        let linesRegEx = RegularExpressions.Regex("([^\n]*)\n([^\n]*)")
+
+        let joinLines () =
+            //ops.SelectLine(textView.Caret.ContainingTextViewLine, false)
+            //let text = ops.SelectedText.Trim()
+            //if text.Length = 0 then ops.Delete() |> ignore else 
+            use off = new OverwriteOff(textView)
+            ops.MoveToStartOfLine(false)
+            ops.MoveLineDown(true)
+            ops.MoveToEndOfLine(true)
+            let text = ops.SelectedText
+            let regexMatch = linesRegEx.Match(text)
+            if regexMatch.Success then
+                let replacement = sprintf "%s %s" (regexMatch.Groups.[1].Value.TrimEnd()) (regexMatch.Groups.[2].Value.TrimStart())
+                ops.ReplaceSelection(replacement) |> ignore
+            else
+                (* fail silently *) 
+                ops.ResetSelection()
+            
+
         [<CLIEvent>]
         member this.CaretMoved = caretMoved.Publish
 
@@ -317,10 +338,10 @@ module ViEmu.TextOperations
 
             member this.JoinPreviousLine () =
                 ops.MoveLineUp(false)
-                ops.MoveToLastNonWhiteSpaceCharacter(false)
-                ops.MoveToStartOfNextLineAfterWhiteSpace(true)
-                ops.Delete() |> ignore
-                |> wrapUp
+                joinLines() |> wrapUp
+
+            member this.JoinNextLine () =
+                joinLines() |> wrapUp
 
             member this.CopySelection () =
                 ops.CopySelection() |> ignore
@@ -330,13 +351,18 @@ module ViEmu.TextOperations
                 ops.ResetSelection()
 
             member this.Indent () =
+                use off = new OverwriteOff(textView)
                 withRelativePositionMaintained <| fun () ->
                     ops.IncreaseLineIndent() |> ignore
                 |> wrapUp
 
             member this.Unindent() =
+                use off = new OverwriteOff(textView)
                 withRelativePositionMaintained <| fun () ->
+                    let hadSelection = ops.SelectedText.Length <> 0
+                    ops.SelectLine(textView.Caret.ContainingTextViewLine, true)
                     ops.Unindent() |> ignore
+                    if not hadSelection then ops.ResetSelection()
                 |> wrapUp
 
             member this.CopyToLineEnd () =

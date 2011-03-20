@@ -34,9 +34,9 @@
                 let wpfTextView = editorFactory.GetWpfTextView textViewAdapter
                 if wpfTextView <> null && wpfTextView.Properties.ContainsProperty typeof<ViKeyProcessor> then
                     let processor = wpfTextView.Properties.GetProperty<ViKeyProcessor> typeof<ViKeyProcessor>
-                    let commandFilter = EscapeCommandFilter(processor, textViewAdapter)
+                    let commandFilter = CommandFilter(processor, textViewAdapter)
                     let result, nextCommand = textViewAdapter.AddCommandFilter(commandFilter)
                     if result = VSConstants.S_OK then
                         commandFilter.NextTarget <- Some(nextCommand) 
-                        wpfTextView.Properties.AddProperty(typeof<EscapeCommandFilter>, commandFilter)
+                        wpfTextView.Properties.AddProperty(typeof<CommandFilter>, commandFilter)
 

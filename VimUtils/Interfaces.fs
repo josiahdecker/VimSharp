@@ -52,6 +52,7 @@ module ViEmu.Interfaces
         abstract member PasteBelow: ?content:string -> unit
         abstract member ResetSelection: unit -> unit
         abstract member JoinPreviousLine: unit -> unit
+        abstract member JoinNextLine: unit -> unit
         abstract member Indent: unit -> unit
         abstract member Unindent: unit -> unit
         abstract member SelectEnclosingWord: unit -> unit
