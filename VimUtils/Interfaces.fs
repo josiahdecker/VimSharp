@@ -8,11 +8,20 @@ module ViEmu.Interfaces
     open Microsoft.VisualStudio.Text.Operations
     open Microsoft.VisualStudio.Editor    
 
+    //RAII for turning overwrite mode off, use with "use (new OverwriteOff)..."            
+    type OverwriteOff(setOverwriteMode: bool -> unit) =
+        do setOverwriteMode false
+
+        interface IDisposable with
+            member this.Dispose () = setOverwriteMode true
+
     [<Interface>]
     type IViMode<'ctx> =
         abstract member HandleKey: 'ctx -> KeyEventArgs -> unit
         abstract member HandleTab: 'ctx -> bool
+        abstract member HandleBackTab: 'ctx -> bool
         abstract member HandleEnter: 'ctx -> bool
+        
 
     [<Interface>]
     type IKeyHandler<'ctx> =
@@ -23,6 +32,7 @@ module ViEmu.Interfaces
     [<Interface>]
     type IViTextOperations =
         abstract member CaretMoved: IEvent<_>
+        abstract member OverwriteModeChanged: IEvent<_>
         abstract member GoToLine: int * ?extendSelection:bool -> unit
         abstract member GoToLineStart: ?includeWhitespace:bool * ?extendSelection:bool -> unit
         abstract member GoToLineEnd: ?extendSelection:bool -> unit
@@ -60,6 +70,8 @@ module ViEmu.Interfaces
         abstract member GoToParagraphStart: ?extendSelection: bool -> unit
         abstract member SwapCaretAndAnchor: unit -> unit
         abstract member AsSingleEvent: (unit -> unit) -> unit
+        abstract member SetOverwrite: bool -> unit
+        abstract member OverwriteOff: OverwriteOff with get
 
     [<Interface>]
     type IViContext =
@@ -83,13 +95,7 @@ module ViEmu.Interfaces
 
 
 
-    //RAII for turning overwrite mode off, use with "use (new OverwriteOff)..."            
-    type OverwriteOff(textView: IWpfTextView) =
-        do
-            textView.Options.SetOptionValue("TextView/OverwriteMode", false)
-
-        interface IDisposable with
-            member this.Dispose () = textView.Options.SetOptionValue("TextView/OverwriteMode", true)
+    
     
 
 

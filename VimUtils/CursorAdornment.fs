@@ -16,9 +16,11 @@ module CursorAdornment =
     open Microsoft.VisualStudio.TextManager.Interop
     open System.ComponentModel.Composition
 
+    open Interfaces
+
     type CursorAdornment(textView: IWpfTextView) =
         let layer = textView.GetAdornmentLayer("CursorBlockLayer")
-        let brush = new SolidColorBrush(Color.FromArgb(byte 0x33, byte 0x33, byte 0x33, byte 0x88))
+        let brush = new SolidColorBrush(Color.FromArgb(byte 0xbb, byte 0x00, byte 0x00, byte 0x00))
         let penBrush = new SolidColorBrush(Colors.Black)
         let pen = new Pen(penBrush, 0.5)
         
@@ -42,7 +44,10 @@ module CursorAdornment =
             let next = current.Add(1)
             new SnapshotSpan(current, next)
 
+        let mutable okToDraw = false
+
         let drawCursor () =
+            if not <| okToDraw then () else
             layer.RemoveAllAdornments()
             let posCurrent = textView.Caret.Position.BufferPosition
             let span = if posCurrent.Position >= posCurrent.Snapshot.Length || textView.Caret.InVirtualSpace then
@@ -66,15 +71,23 @@ module CursorAdornment =
             Canvas.SetLeft(image, shape.Bounds.Left)
             Canvas.SetTop(image, shape.Bounds.Top)
             layer.AddAdornment(AdornmentPositioningBehavior.TextRelative, Nullable(span), null, image, null) |> ignore
-        
-        
+          
         let layoutChanged evt =  drawCursor ()
 
         do 
             textView.LayoutChanged.Add (fun evt -> layoutChanged evt)
             textView.Caret.PositionChanged.Add (fun evt -> layoutChanged evt)
 
+
         member this.DrawCursor () = drawCursor ()
+
+        member this.OkToDraw with get() = okToDraw
+                                and set(value) =
+                                    okToDraw <- value
+                                    if okToDraw then
+                                        drawCursor ()
+                                    else
+                                        layer.RemoveAllAdornments() 
             
             
 

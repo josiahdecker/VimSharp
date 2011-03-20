@@ -4,9 +4,15 @@
 
 namespace ViEmu
   module Interfaces = begin
+    type OverwriteOff =
+      class
+        interface System.IDisposable
+        new : setOverwriteMode:(bool -> unit) -> OverwriteOff
+      end
     [<InterfaceAttribute ()>]
     type IViMode<'ctx> =
       interface
+        abstract member HandleBackTab : 'ctx -> bool
         abstract member HandleEnter : 'ctx -> bool
         abstract member
           HandleKey : 'ctx -> System.Windows.Input.KeyEventArgs -> unit
@@ -69,10 +75,13 @@ namespace ViEmu
         abstract member PasteOverSelection : ?content:string -> unit
         abstract member ResetSelection : unit -> unit
         abstract member SelectEnclosingWord : unit -> unit
+        abstract member SetOverwrite : bool -> unit
         abstract member SwapCaretAndAnchor : unit -> unit
         abstract member Unindent : unit -> unit
         abstract member
           CaretMoved : IEvent<Microsoft.VisualStudio.Text.Editor.ITextCaret>
+        abstract member OverwriteModeChanged : IEvent<bool>
+        abstract member OverwriteOff : OverwriteOff
       end
     [<InterfaceAttribute ()>]
     type IViContext =
@@ -90,12 +99,6 @@ namespace ViEmu
         abstract member Operations : IViTextOperations
         abstract member
           TextView : Microsoft.VisualStudio.Text.Editor.IWpfTextView
-      end
-    type OverwriteOff =
-      class
-        interface System.IDisposable
-        new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView ->
-                OverwriteOff
       end
   end
 
@@ -140,6 +143,7 @@ namespace ViEmu
       inherit Microsoft.VisualStudio.Text.Editor.KeyProcessor
       new : context:Interfaces.IViContext *
             intellisenseMonitor:Monitors.IntellisenseMonitor -> ViKeyProcessor
+      member BackTabCommandSent : unit -> bool
       member EscapeCommandSent : unit -> unit
       override PreviewKeyDown : args:System.Windows.Input.KeyEventArgs -> unit
       override PreviewKeyUp : args:System.Windows.Input.KeyEventArgs -> unit
@@ -264,6 +268,8 @@ namespace ViEmu
         new : textView:Microsoft.VisualStudio.Text.Editor.IWpfTextView ->
                 CursorAdornment
         member DrawCursor : unit -> unit
+        member OkToDraw : bool
+        member OkToDraw : bool with set
       end
   end
 

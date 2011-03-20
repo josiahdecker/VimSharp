@@ -14,10 +14,10 @@
         let textOps = new TextOperations.Operations(textView, ops) :> IViTextOperations
         
         let adornment = new CursorAdornment(textView)
+        do textOps.OverwriteModeChanged.Add (fun overwrite -> adornment.OkToDraw <- overwrite)
         //do textOps.CaretMoved.Add (fun caret -> adornment.DrawCursor() )
 
-        let overwrite choice =
-                textView.Options.SetOptionValue("TextView/OverwriteMode", choice)
+        let overwrite choice = textOps.SetOverwrite choice
 
         let adapt (mode: #IViMode<IViContext>) = 
             Some(mode :> IViMode<IViContext>)
@@ -53,6 +53,8 @@
 
             member this.SetFindMode () =
                 mode <- adapt <| FindMode()
+
+            
                   
                 
 

@@ -65,6 +65,12 @@ module ViEmu.TextOperations
         //convert boolean default argument to false if not given
         let (!!) = flip defaultArg false
 
+        let overwriteChanged = new Event<_>()
+        let setOverwrite choice = 
+            textView.Options.SetOptionValue("TextView/OverwriteMode", choice)
+            overwriteChanged.Trigger choice
+        let overwriteOff () = new OverwriteOff(setOverwrite)
+
         let maybeSetClipboard (input: string option) =
             match input with
                 | Some(str) -> System.Windows.Clipboard.SetText(str)
@@ -82,7 +88,7 @@ module ViEmu.TextOperations
             let text = defaultArg content (System.Windows.Clipboard.GetText())
             let trimmed = text.Trim()
             withRelativePositionMaintained <| fun () ->
-                use off = new OverwriteOff(textView)
+                use off = overwriteOff ()
                 ops.InsertText(trimmed) |> ignore
                 if text.[text.Length - 1] = '\n' then 
                     ops.InsertNewLine() |> ignore
@@ -90,7 +96,7 @@ module ViEmu.TextOperations
         let setIndentation xpos =
             let snapShotPt = textView.Caret.ContainingTextViewLine.GetVirtualBufferPositionFromXCoordinate(xpos)
             let whiteSpace = ops.GetWhitespaceForVirtualSpace(snapShotPt)
-            use off = new OverwriteOff(textView)
+            use off = overwriteOff ()
             ops.InsertText whiteSpace
                
         let moveHorzIfNeeded () =
@@ -176,7 +182,7 @@ module ViEmu.TextOperations
             //ops.SelectLine(textView.Caret.ContainingTextViewLine, false)
             //let text = ops.SelectedText.Trim()
             //if text.Length = 0 then ops.Delete() |> ignore else 
-            use off = new OverwriteOff(textView)
+            use off = overwriteOff ()
             ops.MoveToStartOfLine(false)
             ops.MoveLineDown(true)
             ops.MoveToEndOfLine(true)
@@ -195,6 +201,7 @@ module ViEmu.TextOperations
 
         interface IViTextOperations with
             member this.CaretMoved = caretMoved.Publish
+            member this.OverwriteModeChanged = overwriteChanged.Publish
 
             member this.GoToNextChar (?extendSelection) = ops.MoveToNextCharacter(!!extendSelection) |> wrapUp
             member this.GoToPrevChar (?extendSelection) = ops.MoveToPreviousCharacter(!!extendSelection) |> wrapUp
@@ -270,7 +277,7 @@ module ViEmu.TextOperations
                 |> wrapUp
 
             member this.OpenLineAbove () =
-                use off = new OverwriteOff(textView)
+                use off = overwriteOff ()
                 ops.MoveToStartOfLineAfterWhiteSpace(false)
                 withRelativePositionMaintained (fun () -> ops.InsertNewLine() |> ignore)
                 |> wrapUp
@@ -312,7 +319,7 @@ module ViEmu.TextOperations
                 (this :> IViTextOperations).PasteInsert text
 
             member this.PasteInsert ?content =
-                use off = new OverwriteOff(textView)
+                use off = overwriteOff ()
                 ops.ResetSelection()
                 maybeSetClipboard content
                 ops.Paste() |> ignore
@@ -325,7 +332,7 @@ module ViEmu.TextOperations
 
             //if the text has a newline in it, it will be inserted on a new line, otherwise it will be inserted inline
             member this.PasteBelow ?content =
-                use off = new OverwriteOff(textView)
+                use off = overwriteOff ()
                 let text = defaultArg content (System.Windows.Clipboard.GetText())
                 if text.Contains("\n") then
                     ops.MoveToStartOfNextLineAfterWhiteSpace(false)
@@ -351,13 +358,13 @@ module ViEmu.TextOperations
                 ops.ResetSelection()
 
             member this.Indent () =
-                use off = new OverwriteOff(textView)
+                use off = overwriteOff ()
                 withRelativePositionMaintained <| fun () ->
                     ops.IncreaseLineIndent() |> ignore
                 |> wrapUp
 
             member this.Unindent() =
-                use off = new OverwriteOff(textView)
+                use off = overwriteOff ()
                 withRelativePositionMaintained <| fun () ->
                     let hadSelection = ops.SelectedText.Length <> 0
                     ops.SelectLine(textView.Caret.ContainingTextViewLine, true)
@@ -392,4 +399,8 @@ module ViEmu.TextOperations
                 //ops.AddBeforeTextBufferChangePrimitive()
                 fxn()
                 //ops.AddAfterTextBufferChangePrimitive()
+
+            member this.SetOverwrite choice = setOverwrite choice
+
+            member this.OverwriteOff with get () = overwriteOff ()
                 

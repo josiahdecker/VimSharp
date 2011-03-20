@@ -33,7 +33,7 @@
         ///active at the time. Tab key also handled in OleCommand so as to block further propogation. 
         override this.PreviewKeyUp args =
             match (args.Key, context.Mode) with
-                | Key.Tab, Some(mode) ->
+                |Key.Tab, Some(mode) ->
                     //command already handled by filter
                     ()
                 |Key.Enter, Some(mode) ->
@@ -53,43 +53,34 @@
              | Some(mode) -> mode.HandleTab context
              | None -> false
 
+        member this.BackTabCommandSent () =
+            match context.Mode with
+             | Some(mode) -> mode.HandleBackTab context
+             | None -> false
+
     and CommandFilter(processor: ViKeyProcessor, viewAdapter: IVsTextView) =
         let mutable nextTarget: IOleCommandTarget option = None
-
-        //[<Literal>]
-        //let VSConstants = VSConstants.VSStd2K
-        [<Literal>]
-        let CANCEL = (VSConstants.VSStd2KCmdID.CANCEL :> int )
-        [<Literal>]
-        let cancel = uint32 VSConstants.VSStd2KCmdID.Cancel
-        [<Literal>]
-        let TAB = uint32 VSConstants.VSStd2KCmdID.TAB
-        [<Literal>]
-        let BACKTAB = uint32 VSConstants.VSStd2KCmdID.BACKTAB
 
         let (|Escape|Tab|BackTab|Other|) commandID =
             let commandID = uint32 commandID
             match commandID with
-             | VSConstants.VSStd2KCmdID.CANCEL
-             | VSConstants.VSStd2KCmdID.Cancel -> Escape
+             | x when x = uint32 VSConstants.VSStd2KCmdID.CANCEL 
+                    || x = uint32 VSConstants.VSStd2KCmdID.Cancel -> Escape
              | x when x = uint32 VSConstants.VSStd2KCmdID.TAB -> Tab
              | x when x = uint32 VSConstants.VSStd2KCmdID.BACKTAB -> BackTab
              | _ -> Other
 
-        member this.NextTarget with 
-                                    get() = nextTarget
+        member this.NextTarget with get() = nextTarget
                                     and set(value) = nextTarget <- value 
 
         member this.Disconnect () =
-            viewAdapter.RemoveCommandFilter(this)
-
-        
+            viewAdapter.RemoveCommandFilter(this)        
 
         interface IOleCommandTarget with
             member this.Exec(commandGroup, commandID, opt, pvaIn, pvaOut) =
                 let blockPropogation: bool =
                     match commandGroup with
-                     | VSConstants.VSStd2K ->
+                     | x when x = VSConstants.VSStd2K ->
                         match commandID with
                          | Escape -> 
                             processor.EscapeCommandSent()

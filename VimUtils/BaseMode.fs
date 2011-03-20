@@ -26,9 +26,11 @@
 
             // return true to indicate that the key has been handled, stops further propogation of the event 
             member this.HandleTab context = 
-                match true with
-                 | UpperCase -> context.Operations.Unindent()
-                 | LowerCase -> context.Operations.Indent()
+                context.Operations.Indent()
+                true
+
+            member this.HandleBackTab context =
+                context.Operations.Unindent()
                 true
             
             member this.HandleEnter context = 
@@ -58,7 +60,7 @@
                         context.SetInsertMode()
                     |Key.V -> context.SetVisualMode()
                     |Key.U -> context.Undo()
-                    |Key.Tab -> context.Operations.Indent()
+                    |Key.Tab -> () //this should already be handled by the OleCommand filter
                     |_ -> args.Handled <- false
             
         abstract member HandleUpperCase: IViContext * KeyEventArgs -> unit
@@ -83,6 +85,6 @@
                 |Key.U -> context.Redo()
                 |(* Key.{ *) Key.OemOpenBrackets -> context.Operations.GoToParagraphStart(extendSelection)
                 |(* Key.} *) Key.OemCloseBrackets -> context.Operations.GoToParagraphEnd(extendSelection)
-                |Key.Tab -> context.Operations.Indent()
+                |Key.Tab -> () //this should already be handled by the OleCommand filter
                 |_ -> args.Handled <- false
 
